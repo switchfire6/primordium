@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Primordium — a living canvas</title>
+<style>
+  :root{
+    --bg:#070910;
+    --ink:#dfe9ff;
+    --muted:#7e8aa6;
+    --line:#1b2233;
+    --accent:#5ef0c0;
+    --panel:rgba(12,16,26,0.72);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:"SF Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+    -webkit-font-smoothing:antialiased;cursor:crosshair;}
+  canvas#world{position:fixed;inset:0;display:block;z-index:0;}
+  /* soft vignette to deepen the mood */
+  #vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(120% 120% at 50% 42%, transparent 55%, rgba(0,0,0,0.55) 100%);}
+
+  .panel{position:fixed;z-index:3;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;backdrop-filter:blur(10px) saturate(1.1);
+    -webkit-backdrop-filter:blur(10px) saturate(1.1);
+    box-shadow:0 12px 40px rgba(0,0,0,0.45);}
+
+  /* ---- title ---- */
+  #title{top:18px;left:20px;padding:12px 16px 12px;user-select:none;}
+  #title h1{margin:0;font-size:17px;letter-spacing:5px;font-weight:600;
+    background:linear-gradient(90deg,#8ffce0,#9cc7ff 55%,#caa6ff);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  #title p{margin:3px 0 0;font-size:10.5px;letter-spacing:1.2px;color:var(--muted);}
+
+  /* ---- stats / hud ---- */
+  #hud{top:18px;right:20px;width:268px;padding:14px 16px 16px;}
+  #hud h2{margin:0 0 10px;font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:600;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;font-size:12px;}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;gap:6px;}
+  .stat b{font-weight:600;color:#fff;font-variant-numeric:tabular-nums;}
+  .stat span{color:var(--muted);font-size:10.5px;letter-spacing:.5px;}
+
+  .sectionlabel{margin:14px 0 6px;font-size:9.5px;letter-spacing:2px;color:var(--muted);}
+  canvas.chart{width:100%;display:block;border-radius:8px;background:rgba(0,0,0,0.28);}
+  #legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:7px;font-size:10px;color:var(--muted);}
+  #legend i{display:inline-block;width:9px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+  #spectrum{margin-top:10px;height:14px;}
+
+  /* ---- controls ---- */
+  #controls{bottom:18px;left:20px;padding:11px 12px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;max-width:min(92vw,720px);}
+  button.btn{font:inherit;font-size:11px;letter-spacing:.6px;color:var(--ink);
+    background:rgba(255,255,255,0.04);border:1px solid var(--line);border-radius:9px;
+    padding:7px 11px;cursor:pointer;transition:.15s;white-space:nowrap;}
+  button.btn:hover{background:rgba(94,240,192,0.12);border-color:rgba(94,240,192,0.5);color:#eafff7;}
+  button.btn.active{background:rgba(94,240,192,0.16);border-color:rgba(94,240,192,0.6);color:#eafff7;}
+  .sep{width:1px;height:22px;background:var(--line);margin:0 2px;}
+  .slider{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted);letter-spacing:.5px;}
+  .slider input{width:78px;accent-color:var(--accent);cursor:pointer;}
+
+  #hint{position:fixed;z-index:3;bottom:21px;right:22px;font-size:10.5px;color:var(--muted);
+    letter-spacing:.4px;text-align:right;line-height:1.7;pointer-events:none;text-shadow:0 1px 4px #000;}
+  #hint b{color:#aeb9d6;font-weight:600;}
+
+  /* ---- help overlay ---- */
+  #help{position:fixed;inset:0;z-index:5;display:none;align-items:center;justify-content:center;
+    background:rgba(4,6,12,0.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+  #help.show{display:flex;}
+  #helpcard{max-width:640px;width:90%;max-height:84vh;overflow:auto;padding:30px 34px;
+    background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 20px 70px rgba(0,0,0,.6);line-height:1.65;font-size:13px;}
+  #helpcard h2{margin:0 0 4px;font-size:18px;letter-spacing:3px;
+    background:linear-gradient(90deg,#8ffce0,#caa6ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #helpcard h3{margin:20px 0 7px;font-size:11px;letter-spacing:2px;color:var(--accent);}
+  #helpcard p,#helpcard li{color:#bcc6dd;}
+  #helpcard ul{margin:6px 0;padding-left:18px;}
+  #helpcard kbd{background:rgba(255,255,255,.07);border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:5px;padding:1px 6px;font-size:11px;color:#eafff7;}
+  #helpcard .muted{color:var(--muted);font-size:11.5px;}
+  #helpcard a{color:var(--accent);cursor:pointer;text-decoration:none;border-bottom:1px dotted;}
+  .closehint{margin-top:22px;text-align:center;color:var(--muted);font-size:11px;letter-spacing:1px;}
+
+  @media (max-width:760px){
+    #hud{display:none}
+    #title{padding:9px 12px}
+    #title h1{font-size:14px;letter-spacing:3px}
+  }
+</style>
+</head>
+<body>
+  <canvas id="world"></canvas>
+  <div id="vignette"></div>
+
+  <div id="title" class="panel">
+    <h1>PRIMORDIUM</h1>
+    <p>watch life evolve from nothing</p>
+  </div>
+
+  <div id="hud" class="panel">
+    <h2>VITALS</h2>
+    <div class="grid">
+      <div class="stat"><span>population</span><b id="s-pop">0</b></div>
+      <div class="stat"><span>food</span><b id="s-food">0</b></div>
+      <div class="stat"><span>generation</span><b id="s-gen">0</b></div>
+      <div class="stat"><span>oldest</span><b id="s-old">0s</b></div>
+      <div class="stat"><span>births</span><b id="s-births">0</b></div>
+      <div class="stat"><span>deaths</span><b id="s-deaths">0</b></div>
+      <div class="stat"><span>predators</span><b id="s-pred">0%</b></div>
+      <div class="stat"><span>fps</span><b id="s-fps">0</b></div>
+    </div>
+
+    <div class="sectionlabel">POPULATION</div>
+    <canvas class="chart" id="chartPop" width="240" height="46"></canvas>
+
+    <div class="sectionlabel">EVOLVING TRAITS</div>
+    <canvas class="chart" id="chartTraits" width="240" height="64"></canvas>
+    <div id="legend">
+      <span><i style="background:#7fd1ff"></i>size</span>
+      <span><i style="background:#ffd27f"></i>speed</span>
+      <span><i style="background:#b69cff"></i>sense</span>
+      <span><i style="background:#ff6f91"></i>carnivory</span>
+    </div>
+
+    <div class="sectionlabel">SPECIES SPECTRUM</div>
+    <canvas class="chart" id="spectrum" width="240" height="14"></canvas>
+  </div>
+
+  <div id="controls" class="panel">
+    <button class="btn" id="btn-pause">❚❚ pause</button>
+    <button class="btn" id="btn-reset">↻ new world</button>
+    <div class="sep"></div>
+    <div class="slider"><label for="sp">speed</label><input id="sp" type="range" min="0.25" max="8" step="0.25" value="1"><b id="sp-val" style="color:#fff;font-size:11px">1×</b></div>
+    <div class="sep"></div>
+    <div class="slider"><label for="food">food</label><input id="food" type="range" min="40" max="600" step="10" value="320"></div>
+    <div class="slider"><label for="mut">mutation</label><input id="mut" type="range" min="0" max="0.4" step="0.01" value="0.12"></div>
+    <div class="sep"></div>
+    <button class="btn active" id="btn-trails">trails</button>
+    <button class="btn" id="btn-vision">vision</button>
+    <button class="btn" id="btn-help">? help</button>
+  </div>
+
+  <div id="hint">
+    <b>drag</b> to sow food · <b>shift-click</b> to seed a creature<br>
+    <b>space</b> pause · <b>r</b> reset · <b>h</b> help
+  </div>
+
+  <div id="help">
+    <div id="helpcard" class="panel">
+      <h2>PRIMORDIUM</h2>
+      <p class="muted">An ecosystem with no designer. Everything you see is emergent.</p>
+
+      <h3>WHAT IS THIS</h3>
+      <p>Hundreds of organisms drift through a primordial soup. Each one carries a <b>genome</b>: body traits (size, speed, sense range, diet) and a tiny <b>neural-network brain</b> wired from random weights. Brains read the world — the direction and nearness of food, of other creatures, their own hunger — and decide how to turn and how hard to swim.</p>
+      <p>Nobody is taught anything. Creatures that happen to find food gain energy; with enough energy they <b>split in two</b>, and the child inherits the parent's genome with small random <b>mutations</b>. Those that starve vanish. That single loop — eat, reproduce, mutate, die — is natural selection, and it quietly tunes the whole population over a few minutes.</p>
+
+      <h3>WHAT TO WATCH FOR</h3>
+      <ul>
+        <li><b>Foraging.</b> Early on most creatures wander aimlessly. Watch the survivors start to <i>steer</i> toward food — a behaviour no one programmed.</li>
+        <li><b>Speciation.</b> Colour is an inherited lineage marker. The <b>species spectrum</b> bar shows which lineages dominate; watch bands appear, split, and go extinct.</li>
+        <li><b>The trait chart.</b> Real-time averages of size, speed, sense and carnivory. Selection pushes these lines — sometimes toward fast tiny grazers, sometimes toward big slow predators.</li>
+        <li><b>Predators.</b> A high <b>carnivory</b> gene lets a creature eat smaller creatures whole. Watch food chains form and collapse.</li>
+      </ul>
+
+      <h3>PLAY WITH IT</h3>
+      <ul>
+        <li><b>Drag</b> across the canvas to sow food and feed a region.</li>
+        <li><b>Shift-click</b> to drop a brand-new random creature — an invasive species.</li>
+        <li>Turn <b>food</b> scarcity up and down to trigger booms and famines.</li>
+        <li>Crank <b>mutation</b> high for chaos, low to freeze evolution.</li>
+        <li>Toggle <b>vision</b> to see what a few creatures are sensing.</li>
+        <li>Push <b>speed</b> to 8× and let an hour of evolution pass in a minute.</li>
+      </ul>
+
+      <h3>KEYS</h3>
+      <p><kbd>space</kbd> pause &nbsp; <kbd>r</kbd> new world &nbsp; <kbd>t</kbd> trails &nbsp; <kbd>v</kbd> vision &nbsp; <kbd>[ ]</kbd> speed &nbsp; <kbd>h</kbd> / <kbd>?</kbd> this help</p>
+
+      <div class="closehint">— click anywhere or press <kbd>h</kbd> to return —</div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+/* ============================================================================
+   PRIMORDIUM
+   A single-file artificial-life simulation. Creatures carry an evolvable
+   feed-forward neural net and a handful of body-trait genes. Natural selection
+   does the rest. No libraries, no build step.
+   ============================================================================ */
+
+const TAU = Math.PI * 2;
+
+/* ---------- tunables ---------------------------------------------------- */
+const CFG = {
+  // population
+  initialCreatures: 90,
+  minPopulation:    26,     // immigration floor — keeps the world from dying
+  maxPopulation:    360,    // hard cap for performance
+
+  // food
+  foodTarget:   320,        // controlled live by the slider
+  foodEnergy:   46,
+  foodPerSec:   72,         // primary production — feeds the base of the web
+
+  // energy economy
+  startEnergy:  130,
+  maxEnergy:    260,
+  reproEnergy:  178,
+  reproAge:     3.0,
+  reproCost:    0.5,        // fraction of energy handed to the child
+  maxAge:       80,
+
+  // metabolism (energy / second).  costs are deliberately shaped to create
+  // trade-offs: size is super-linear (giants are dear) and speed is far more
+  // expensive for a big body — so evolution must choose between small/fast
+  // grazers and large/slow ambush predators rather than maxing everything.
+  base:         3.0,
+  costSize:     0.11,       // multiplied by size²
+  costSense:    0.020,
+  costMoveBase: 0.085,
+
+  // movement
+  maxTurn:      3.3,        // rad / sec at full deflection
+  responsive:   4.2,        // how fast speed relaxes to the target
+  baseDrive:    0.30,       // minimum forward drive (keeps wanderers exploring)
+
+  // predation
+  predRatio:    1.13,       // attacker must be this much bigger to eat prey
+  predGain:     0.80,       // fraction of victim energy captured
+  predBonus:    14,         // flat energy bonus per successful kill
+
+  // mutation (rate controlled live by the slider)
+  mutRate:      0.12,
+  mutScale:     0.45,
+  bigMut:       0.025,
+  traitMut:     0.085,
+
+  // gene ranges
+  sizeMin: 3.0,  sizeMax: 9.6,
+  speedMin: 38,  speedMax: 165,
+  senseMin: 60,  senseMax: 225,
+  freqMin: 0.2,  freqMax: 3.0,
+};
+
+/* ---------- small utilities --------------------------------------------- */
+const rand  = (a, b) => a + Math.random() * (b - a);
+const randi = (a, b) => (a + Math.random() * (b - a)) | 0;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp  = (a, b, t) => a + (b - a) * t;
+// standard-normal sample (Box–Muller)
+function gauss() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v);
+}
+
+/* ---------- neural network ----------------------------------------------
+   One hidden layer, tanh throughout. Weights live in flat arrays so cloning
+   and mutating a genome is trivial.                                        */
+class Brain {
+  constructor(ni, nh, no, src) {
+    this.ni = ni; this.nh = nh; this.no = no;
+    if (src) {
+      this.w1 = src.w1.slice(); this.b1 = src.b1.slice();
+      this.w2 = src.w2.slice(); this.b2 = src.b2.slice();
+    } else {
+      this.w1 = Brain.randArr(nh * ni); this.b1 = Brain.randArr(nh);
+      this.w2 = Brain.randArr(no * nh); this.b2 = Brain.randArr(no);
+    }
+    this._h = new Float32Array(nh);
+    this._o = new Float32Array(no);
+  }
+  static randArr(n) {
+    const a = new Float32Array(n);
+    for (let i = 0; i < n; i++) a[i] = gauss() * 0.8;
+    return a;
+  }
+  forward(inp) {
+    const { ni, nh, no, w1, b1, w2, b2, _h, _o } = this;
+    for (let j = 0; j < nh; j++) {
+      let s = b1[j], base = j * ni;
+      for (let i = 0; i < ni; i++) s += w1[base + i] * inp[i];
+      _h[j] = Math.tanh(s);
+    }
+    for (let k = 0; k < no; k++) {
+      let s = b2[k], base = k * nh;
+      for (let j = 0; j < nh; j++) s += w2[base + j] * _h[j];
+      _o[k] = Math.tanh(s);
+    }
+    return _o;
+  }
+  clone() { return new Brain(this.ni, this.nh, this.no, this); }
+  mutate(rate, scale, big) {
+    const arrs = [this.w1, this.b1, this.w2, this.b2];
+    for (const a of arrs)
+      for (let i = 0; i < a.length; i++) {
+        if (Math.random() < rate) a[i] += gauss() * scale;
+        if (Math.random() < big)  a[i]  = gauss() * 0.9;   // occasional rewire
+      }
+  }
+}
+
+/* ---------- genome ------------------------------------------------------- */
+const NI = 10, NH = 10, NO = 2;
+
+function randomGenome() {
+  return {
+    hue:   rand(0, 360),
+    size:  rand(CFG.sizeMin,  CFG.sizeMax),
+    speed: rand(CFG.speedMin, CFG.speedMax),
+    sense: rand(CFG.senseMin, CFG.senseMax),
+    diet:  Math.pow(Math.random(), 2),          // skew toward herbivores
+    freq:  rand(CFG.freqMin, CFG.freqMax),
+    brain: new Brain(NI, NH, NO),
+  };
+}
+
+function mutateGenome(g) {
+  const tm = CFG.traitMut;
+  const child = {
+    hue:   (g.hue + gauss() * 7 + 360) % 360,
+    size:  clamp(g.size  + gauss() * tm * (CFG.sizeMax  - CFG.sizeMin),  CFG.sizeMin,  CFG.sizeMax),
+    speed: clamp(g.speed + gauss() * tm * (CFG.speedMax - CFG.speedMin), CFG.speedMin, CFG.speedMax),
+    sense: clamp(g.sense + gauss() * tm * (CFG.senseMax - CFG.senseMin), CFG.senseMin, CFG.senseMax),
+    diet:  clamp(g.diet  + gauss() * tm, 0, 1),
+    freq:  clamp(g.freq  + gauss() * tm * (CFG.freqMax - CFG.freqMin), CFG.freqMin, CFG.freqMax),
+    brain: g.brain.clone(),
+  };
+  child.brain.mutate(CFG.mutRate, CFG.mutScale, CFG.bigMut);
+  return child;
+}
+
+/* ---------- spatial hash grid (toroidal) -------------------------------- */
+class Grid {
+  constructor(w, h, cell) { this.resize(w, h, cell); }
+  resize(w, h, cell) {
+    this.w = w; this.h = h; this.cell = cell;
+    this.cols = Math.max(1, Math.ceil(w / cell));
+    this.rows = Math.max(1, Math.ceil(h / cell));
+    this.buckets = new Array(this.cols * this.rows);
+    for (let i = 0; i < this.buckets.length; i++) this.buckets[i] = [];
+  }
+  clear() { for (let i = 0; i < this.buckets.length; i++) this.buckets[i].length = 0; }
+  insert(item, x, y) {
+    const cx = clamp(x / this.cell | 0, 0, this.cols - 1);
+    const cy = clamp(y / this.cell | 0, 0, this.rows - 1);
+    this.buckets[cy * this.cols + cx].push(item);
+  }
+  // iterate items in cells overlapping the radius around (x,y), with wrap
+  near(x, y, r, cb) {
+    const span = Math.ceil(r / this.cell);
+    const ccx = x / this.cell | 0, ccy = y / this.cell | 0;
+    const { cols, rows, buckets } = this;
+    for (let j = -span; j <= span; j++) {
+      const cy = ((ccy + j) % rows + rows) % rows;
+      for (let i = -span; i <= span; i++) {
+        const cx = ((ccx + i) % cols + cols) % cols;
+        const b = buckets[cy * cols + cx];
+        for (let k = 0; k < b.length; k++) cb(b[k]);
+      }
+    }
+  }
+}
+
+/* ---------- the world ---------------------------------------------------- */
+let idSeq = 1;
+
+class World {
+  constructor(w, h) {
+    this.resize(w, h);
+    this.reset();
+  }
+  resize(w, h) {
+    this.w = w; this.h = h;
+    this.foodGrid = new Grid(w, h, 92);
+    this.critGrid = new Grid(w, h, 110);
+  }
+  reset() {
+    this.creatures = [];
+    this.food = [];
+    this.time = 0;
+    this.births = 0;
+    this.deaths = 0;
+    this.maxGen = 0;
+    this.history = { pop: [], size: [], speed: [], sense: [], diet: [] };
+    this._sampleAcc = 0;
+    for (let i = 0; i < CFG.initialCreatures; i++) this.spawn(randomGenome());
+    for (let i = 0; i < CFG.foodTarget * 0.7; i++) this.dropFood();
+  }
+  spawn(genome, x, y, energy, gen) {
+    if (this.creatures.length >= CFG.maxPopulation) return null;
+    const c = {
+      g: genome,
+      id: idSeq++,
+      x: x ?? rand(0, this.w),
+      y: y ?? rand(0, this.h),
+      heading: rand(0, TAU),
+      speed: 0,
+      energy: energy ?? CFG.startEnergy,
+      age: 0,
+      gen: gen ?? 0,
+      phase: rand(0, TAU),
+      alive: true,
+      in: new Float32Array(NI),
+      // sense memory (for the vision overlay)
+      fx: 0, fy: 0, fHit: false, cx: 0, cy: 0, cHit: false,
+    };
+    if (c.gen > this.maxGen) this.maxGen = c.gen;
+    this.creatures.push(c);
+    return c;
+  }
+  dropFood(x, y) {
+    this.food.push({
+      x: x ?? rand(0, this.w),
+      y: y ?? rand(0, this.h),
+      e: CFG.foodEnergy,
+    });
+  }
+
+  /* toroidal delta */
+  dx(a, b) { let d = b - a; const w = this.w; if (d > w/2) d -= w; else if (d < -w/2) d += w; return d; }
+  dy(a, b) { let d = b - a; const h = this.h; if (d > h/2) d -= h; else if (d < -h/2) d += h; return d; }
+
+  step(dt) {
+    const W = this.w, H = this.h, cs = this.creatures;
+
+    // rebuild grids
+    this.foodGrid.clear();
+    for (const f of this.food) this.foodGrid.insert(f, f.x, f.y);
+    this.critGrid.clear();
+    for (const c of cs) if (c.alive) this.critGrid.insert(c, c.x, c.y);
+
+    /* ---- sense + think + move ---- */
+    for (const c of cs) {
+      if (!c.alive) continue;
+      const g = c.g, In = c.in;
+
+      // nearest food
+      let bestF = 1e9, fdx = 0, fdy = 0, gotF = false;
+      this.foodGrid.near(c.x, c.y, g.sense, (f) => {
+        const ddx = this.dx(c.x, f.x), ddy = this.dy(c.y, f.y);
+        const d2 = ddx*ddx + ddy*ddy;
+        if (d2 < bestF) { bestF = d2; fdx = ddx; fdy = ddy; gotF = true; }
+      });
+      // nearest other creature
+      let bestC = 1e9, cdx = 0, cdy = 0, gotC = false, otherSize = 0;
+      this.critGrid.near(c.x, c.y, g.sense, (o) => {
+        if (o === c || !o.alive) return;
+        const ddx = this.dx(c.x, o.x), ddy = this.dy(c.y, o.y);
+        const d2 = ddx*ddx + ddy*ddy;
+        if (d2 < bestC) { bestC = d2; cdx = ddx; cdy = ddy; gotC = true; otherSize = o.g.size; }
+      });
+
+      const sense = g.sense;
+      // food inputs
+      if (gotF && bestF < sense*sense) {
+        const d = Math.sqrt(bestF), close = 1 - d / sense;
+        const a = Math.atan2(fdy, fdx) - c.heading;
+        In[0] = Math.sin(a) * close;
+        In[1] = Math.cos(a) * close;
+        c.fx = fdx; c.fy = fdy; c.fHit = true;
+      } else { In[0] = 0; In[1] = 0; c.fHit = false; }
+      // creature inputs
+      if (gotC && bestC < sense*sense) {
+        const d = Math.sqrt(bestC), close = 1 - d / sense;
+        const a = Math.atan2(cdy, cdx) - c.heading;
+        In[2] = Math.sin(a) * close;
+        In[3] = Math.cos(a) * close;
+        In[4] = clamp((otherSize - g.size) / 6, -1, 1) * close;
+        c.cx = cdx; c.cy = cdy; c.cHit = true;
+      } else { In[2] = 0; In[3] = 0; In[4] = 0; c.cHit = false; }
+
+      In[5] = (c.energy / CFG.maxEnergy) * 2 - 1;
+      In[6] = c.speed / g.speed;
+      In[7] = g.diet * 2 - 1;
+      c.phase += g.freq * TAU * dt;
+      In[8] = Math.sin(c.phase);
+      In[9] = 1;
+
+      const out = g.brain.forward(In);
+
+      // steering + drive
+      c.heading += out[0] * CFG.maxTurn * dt;
+      if (c.heading > TAU) c.heading -= TAU; else if (c.heading < 0) c.heading += TAU;
+      const drive = CFG.baseDrive + (1 - CFG.baseDrive) * clamp(out[1], 0, 1);
+      const target = drive * g.speed;
+      c.speed += (target - c.speed) * CFG.responsive * dt;
+
+      // integrate position (toroidal)
+      c.x += Math.cos(c.heading) * c.speed * dt;
+      c.y += Math.sin(c.heading) * c.speed * dt;
+      if (c.x < 0) c.x += W; else if (c.x >= W) c.x -= W;
+      if (c.y < 0) c.y += H; else if (c.y >= H) c.y -= H;
+
+      // metabolism — moving a big body fast is expensive; size cost is super-linear
+      const moveCost = CFG.costMoveBase * c.speed * (0.5 + 0.10 * g.size);
+      const cost = CFG.base + CFG.costSize * g.size * g.size + CFG.costSense * g.sense + moveCost;
+      c.energy -= cost * dt;
+      c.age += dt;
+      if (c.energy <= 0 || c.age > CFG.maxAge) c.alive = false;
+    }
+
+    // rebuild creature grid after movement for accurate eating
+    this.critGrid.clear();
+    for (const c of cs) if (c.alive) this.critGrid.insert(c, c.x, c.y);
+
+    /* ---- eating: food, then predation ---- */
+    for (const c of cs) {
+      if (!c.alive) continue;
+      const g = c.g, reach = g.size + 4;
+      // graze food — efficiency falls as a creature specialises toward meat,
+      // so herbivores own the plant niche and carnivores must hunt to live
+      const foodEff = Math.max(0, 1 - g.diet);
+      this.foodGrid.near(c.x, c.y, reach + 6, (f) => {
+        if (f.e <= 0) return;
+        const ddx = this.dx(c.x, f.x), ddy = this.dy(c.y, f.y);
+        if (ddx*ddx + ddy*ddy < reach*reach) {
+          c.energy = Math.min(CFG.maxEnergy, c.energy + f.e * foodEff);
+          f.e = 0;
+        }
+      });
+      // predation — only meaningfully carnivorous creatures benefit
+      if (g.diet > 0.4) {
+        this.critGrid.near(c.x, c.y, g.size + 12, (o) => {
+          if (o === c || !o.alive) return;
+          if (g.size > o.g.size * CFG.predRatio) {
+            const ddx = this.dx(c.x, o.x), ddy = this.dy(c.y, o.y);
+            const rr = g.size + o.g.size;
+            if (ddx*ddx + ddy*ddy < rr*rr) {
+              c.energy = Math.min(CFG.maxEnergy, c.energy + o.energy * CFG.predGain * g.diet + CFG.predBonus);
+              o.alive = false;
+            }
+          }
+        });
+      }
+    }
+
+    /* ---- reproduction ---- */
+    const newborns = [];
+    for (const c of cs) {
+      if (!c.alive) continue;
+      if (c.energy >= CFG.reproEnergy && c.age >= CFG.reproAge &&
+          cs.length + newborns.length < CFG.maxPopulation) {
+        const give = c.energy * CFG.reproCost;
+        c.energy -= give;
+        const child = {
+          g: mutateGenome(c.g),
+          id: idSeq++,
+          x: c.x + rand(-12, 12), y: c.y + rand(-12, 12),
+          heading: rand(0, TAU), speed: 0,
+          energy: give, age: 0, gen: c.gen + 1,
+          phase: rand(0, TAU), alive: true,
+          in: new Float32Array(NI),
+          fx:0,fy:0,fHit:false,cx:0,cy:0,cHit:false,
+        };
+        if (child.gen > this.maxGen) this.maxGen = child.gen;
+        newborns.push(child);
+        this.births++;
+      }
+    }
+
+    /* ---- cull dead, append newborns ---- */
+    let w = 0;
+    for (let i = 0; i < cs.length; i++) {
+      if (cs[i].alive) cs[w++] = cs[i];
+      else this.deaths++;
+    }
+    cs.length = w;
+    for (const n of newborns) cs.push(n);
+
+    /* ---- prune eaten food, top up toward target ---- */
+    let fw = 0;
+    for (let i = 0; i < this.food.length; i++)
+      if (this.food[i].e > 0) this.food[fw++] = this.food[i];
+    this.food.length = fw;
+
+    // probabilistic top-up toward the (live-adjustable) target
+    const deficit = CFG.foodTarget - this.food.length;
+    const want = Math.min(deficit, CFG.foodPerSec * dt);
+    let n = Math.floor(want);
+    if (Math.random() < want - n) n++;
+    for (let i = 0; i < n; i++) this.dropFood();
+
+    /* ---- immigration floor ---- */
+    while (this.creatures.length < CFG.minPopulation)
+      this.spawn(randomGenome());
+
+    this.time += dt;
+    this.sample(dt);
+  }
+
+  sample(dt) {
+    this._sampleAcc += dt;
+    if (this._sampleAcc < 0.4) return;
+    this._sampleAcc = 0;
+    const cs = this.creatures, n = cs.length || 1;
+    let size = 0, speed = 0, sense = 0, diet = 0;
+    for (const c of cs) { size += c.g.size; speed += c.g.speed; sense += c.g.sense; diet += c.g.diet; }
+    const H = this.history, CAP = 220;
+    const push = (arr, v) => { arr.push(v); if (arr.length > CAP) arr.shift(); };
+    push(H.pop,   cs.length);
+    push(H.size,  size  / n);
+    push(H.speed, speed / n);
+    push(H.sense, sense / n);
+    push(H.diet,  diet  / n);
+  }
+
+  stats() {
+    const cs = this.creatures, n = cs.length || 1;
+    let oldest = 0, pred = 0, dietSum = 0;
+    const hues = new Float32Array(36);
+    for (const c of cs) {
+      if (c.age > oldest) oldest = c.age;
+      if (c.g.diet > 0.5) pred++;
+      dietSum += c.g.diet;
+      hues[clamp(c.g.hue / 10 | 0, 0, 35)]++;
+    }
+    return {
+      pop: cs.length, food: this.food.length, gen: this.maxGen,
+      oldest, births: this.births, deaths: this.deaths,
+      pred: cs.length ? pred / cs.length : 0,
+      hues,
+    };
+  }
+}
+
+/* ============================================================================
+   RENDERER
+   ============================================================================ */
+const canvas = document.getElementById('world');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W = 0, H = 0, DPR = 1;
+
+// cached additive glow sprites, one per hue bucket
+const GLOW_BUCKETS = 48, GLOW_R = 40;
+const glowSprites = [];
+function buildSprites() {
+  glowSprites.length = 0;
+  for (let i = 0; i < GLOW_BUCKETS; i++) {
+    const hue = i / GLOW_BUCKETS * 360;
+    const s = document.createElement('canvas');
+    s.width = s.height = GLOW_R * 2;
+    const g = s.getContext('2d');
+    const grad = g.createRadialGradient(GLOW_R, GLOW_R, 0, GLOW_R, GLOW_R, GLOW_R);
+    grad.addColorStop(0,    `hsla(${hue},95%,82%,0.95)`);
+    grad.addColorStop(0.25, `hsla(${hue},92%,64%,0.65)`);
+    grad.addColorStop(0.6,  `hsla(${hue},90%,50%,0.18)`);
+    grad.addColorStop(1,    `hsla(${hue},90%,50%,0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, GLOW_R * 2, GLOW_R * 2);
+    glowSprites.push(s);
+  }
+}
+// food sprite (soft teal)
+let foodSprite;
+function buildFoodSprite() {
+  const R = 9; const s = document.createElement('canvas');
+  s.width = s.height = R * 2;
+  const g = s.getContext('2d');
+  const grad = g.createRadialGradient(R, R, 0, R, R, R);
+  grad.addColorStop(0,   'rgba(180,255,225,0.95)');
+  grad.addColorStop(0.4, 'rgba(90,240,190,0.5)');
+  grad.addColorStop(1,   'rgba(90,240,190,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, R * 2, R * 2);
+  foodSprite = s;
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (world) world.resize(W, H);
+}
+
+function render(world, opts) {
+  // fade (trails) or hard clear
+  if (opts.trails) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(7,9,16,0.16)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#070910';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.globalCompositeOperation = 'lighter';
+
+  // food
+  const fs = foodSprite, fr = fs.width / 2;
+  for (const f of world.food) ctx.drawImage(fs, f.x - fr, f.y - fr);
+
+  // creatures
+  for (const c of world.creatures) {
+    const g = c.g;
+    const bucket = clamp(g.hue / 360 * GLOW_BUCKETS | 0, 0, GLOW_BUCKETS - 1);
+    const spr = glowSprites[bucket];
+    // glow scales with size and a gentle pulse from energy
+    const e = clamp(c.energy / CFG.maxEnergy, 0.15, 1);
+    const rad = (g.size + 4) * (1.6 + 0.5 * e);
+    const sc = rad / GLOW_R;
+    const w2 = GLOW_R * sc;
+    ctx.globalAlpha = 0.55 + 0.4 * e;
+    ctx.drawImage(spr, c.x - w2, c.y - w2, w2 * 2, w2 * 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // cores + heading (drawn over glow, still additive for a bright nucleus)
+  for (const c of world.creatures) {
+    const g = c.g;
+    const r = g.size * 0.5;
+    // carnivores get a hotter, whiter core
+    const carn = g.diet;
+    ctx.fillStyle = `hsla(${g.hue}, ${70 - carn*40}%, ${88}%, 0.9)`;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, TAU);
+    ctx.fill();
+    // heading whisker
+    ctx.strokeStyle = `hsla(${g.hue},90%,80%,0.5)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(c.x + Math.cos(c.heading) * (g.size + 3), c.y + Math.sin(c.heading) * (g.size + 3));
+    ctx.stroke();
+  }
+
+  // vision overlay for a sample of creatures
+  if (opts.vision) {
+    ctx.globalCompositeOperation = 'source-over';
+    const cs = world.creatures;
+    const stepN = Math.max(1, Math.floor(cs.length / 14));
+    for (let i = 0; i < cs.length; i += stepN) {
+      const c = cs[i], g = c.g;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(c.x, c.y, g.sense, 0, TAU); ctx.stroke();
+      if (c.fHit) {
+        ctx.strokeStyle = 'rgba(120,255,200,0.55)';
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + c.fx, c.y + c.fy); ctx.stroke();
+      }
+      if (c.cHit) {
+        ctx.strokeStyle = 'rgba(255,140,170,0.5)';
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + c.cx, c.y + c.cy); ctx.stroke();
+      }
+    }
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ---------- HUD + charts ------------------------------------------------- */
+const el = (id) => document.getElementById(id);
+const chartPop    = el('chartPop'),    cpx = chartPop.getContext('2d');
+const chartTraits = el('chartTraits'), ctx2 = chartTraits.getContext('2d');
+const spectrum    = el('spectrum'),    spx = spectrum.getContext('2d');
+
+function fitChart(cv, c) {
+  // capture the markup height once as the fixed CSS design height
+  const cssH = cv._designH || (cv._designH = cv.height);
+  const cssW = cv.clientWidth || 240;
+  const bw = Math.round(cssW * DPR), bh = Math.round(cssH * DPR);
+  if (cv.width !== bw || cv.height !== bh) {
+    cv.width = bw; cv.height = bh;
+    cv.style.height = cssH + 'px';
+  }
+  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  return { w: cssW, h: cssH };
+}
+
+function spark(c, data, w, h, min, max, color, fill) {
+  if (data.length < 2) return;
+  const n = data.length, range = (max - min) || 1;
+  c.beginPath();
+  for (let i = 0; i < n; i++) {
+    const x = i / (n - 1) * w;
+    const y = h - clamp((data[i] - min) / range, 0, 1) * (h - 4) - 2;
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  }
+  c.strokeStyle = color; c.lineWidth = 1.4; c.lineJoin = 'round'; c.stroke();
+  if (fill) {
+    c.lineTo(w, h); c.lineTo(0, h); c.closePath();
+    c.fillStyle = fill; c.fill();
+  }
+}
+
+function drawCharts(world) {
+  const H = world.history;
+  // population
+  let d = fitChart(chartPop, cpx);
+  cpx.clearRect(0, 0, d.w, d.h);
+  let mx = 1; for (const v of H.pop) if (v > mx) mx = v;
+  spark(cpx, H.pop, d.w, d.h, 0, Math.max(mx, CFG.minPopulation + 8), '#5ef0c0', 'rgba(94,240,192,0.12)');
+
+  // traits (each normalized to its gene range)
+  d = fitChart(chartTraits, ctx2);
+  ctx2.clearRect(0, 0, d.w, d.h);
+  spark(ctx2, H.size,  d.w, d.h, CFG.sizeMin,  CFG.sizeMax,  '#7fd1ff');
+  spark(ctx2, H.speed, d.w, d.h, CFG.speedMin, CFG.speedMax, '#ffd27f');
+  spark(ctx2, H.sense, d.w, d.h, CFG.senseMin, CFG.senseMax, '#b69cff');
+  spark(ctx2, H.diet,  d.w, d.h, 0, 1, '#ff6f91');
+}
+
+function drawSpectrum(hues) {
+  const d = fitChart(spectrum, spx);
+  spx.clearRect(0, 0, d.w, d.h);
+  let total = 0; for (const v of hues) total += v;
+  if (!total) return;
+  const n = hues.length, bw = d.w / n;
+  for (let i = 0; i < n; i++) {
+    const frac = hues[i] / total;
+    const a = clamp(frac * 6, 0.05, 1);
+    spx.fillStyle = `hsla(${i / n * 360}, 85%, 60%, ${a})`;
+    spx.fillRect(i * bw, 0, bw + 0.6, d.h);
+  }
+}
+
+let fpsEMA = 60;
+function updateHUD(world, dtReal) {
+  const s = world.stats();
+  el('s-pop').textContent    = s.pop;
+  el('s-food').textContent   = s.food;
+  el('s-gen').textContent    = s.gen;
+  el('s-old').textContent    = s.oldest.toFixed(0) + 's';
+  el('s-births').textContent = s.births;
+  el('s-deaths').textContent = s.deaths;
+  el('s-pred').textContent   = (s.pred * 100).toFixed(0) + '%';
+  if (dtReal > 0) fpsEMA = lerp(fpsEMA, 1 / dtReal, 0.1);
+  el('s-fps').textContent = fpsEMA.toFixed(0);
+  drawCharts(world);
+  drawSpectrum(s.hues);
+}
+
+/* ============================================================================
+   MAIN LOOP + UI
+   ============================================================================ */
+let world;
+const state = { paused: false, speed: 1, trails: true, vision: false };
+
+function init() {
+  resize();
+  buildSprites();
+  buildFoodSprite();
+  world = new World(W, H);
+  ctx.fillStyle = '#070910'; ctx.fillRect(0, 0, W, H);
+}
+
+let last = performance.now(), hudAcc = 0;
+const FIXED = 1 / 60;
+let accumulator = 0;
+
+function frame(now) {
+  const dtReal = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  if (!state.paused) {
+    accumulator += dtReal * state.speed;
+    // run fixed steps; cap to avoid spiral of death at high speeds
+    let steps = 0, maxSteps = 14;
+    while (accumulator >= FIXED && steps < maxSteps) {
+      world.step(FIXED);
+      accumulator -= FIXED;
+      steps++;
+    }
+    if (accumulator > FIXED * maxSteps) accumulator = 0;
+  }
+
+  render(world, state);
+
+  hudAcc += dtReal;
+  if (hudAcc > 0.2) { updateHUD(world, dtReal); hudAcc = 0; }
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------- input -------------------------------------------------------- */
+let pointerDown = false;
+function canvasPos(e) {
+  const t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX, y: t.clientY };
+}
+function sow(x, y, n) {
+  for (let i = 0; i < n; i++)
+    world.dropFood(
+      (x + rand(-26, 26) + W) % W,
+      (y + rand(-26, 26) + H) % H
+    );
+}
+canvas.addEventListener('pointerdown', (e) => {
+  const p = canvasPos(e);
+  if (e.shiftKey) {
+    world.spawn(randomGenome(), p.x, p.y, CFG.startEnergy * 1.2);
+  } else {
+    pointerDown = true;
+    sow(p.x, p.y, 6);
+  }
+});
+canvas.addEventListener('pointermove', (e) => { if (pointerDown) { const p = canvasPos(e); sow(p.x, p.y, 3); } });
+window.addEventListener('pointerup', () => pointerDown = false);
+
+/* ---------- controls ----------------------------------------------------- */
+const btnPause  = el('btn-pause'), btnTrails = el('btn-trails'),
+      btnVision = el('btn-vision'), help = el('help');
+
+function setPaused(p) { state.paused = p; btnPause.textContent = p ? '▶ resume' : '❚❚ pause'; btnPause.classList.toggle('active', p); }
+function setTrails(t) { state.trails = t; btnTrails.classList.toggle('active', t); if (!t) { ctx.fillStyle = '#070910'; ctx.fillRect(0,0,W,H);} }
+function setVision(v) { state.vision = v; btnVision.classList.toggle('active', v); }
+function setSpeed(v)  { state.speed = v; el('sp').value = v; el('sp-val').textContent = (v % 1 ? v.toFixed(2) : v) + '×'; }
+function toggleHelp() { help.classList.toggle('show'); }
+function newWorld()   { world.reset(); ctx.fillStyle = '#070910'; ctx.fillRect(0,0,W,H); }
+
+btnPause.onclick  = () => setPaused(!state.paused);
+btnTrails.onclick = () => setTrails(!state.trails);
+btnVision.onclick = () => setVision(!state.vision);
+el('btn-reset').onclick = newWorld;
+el('btn-help').onclick  = toggleHelp;
+help.onclick = toggleHelp;
+el('helpcard').onclick = (e) => e.stopPropagation();
+
+el('sp').oninput   = (e) => setSpeed(parseFloat(e.target.value));
+el('food').oninput = (e) => { CFG.foodTarget = parseInt(e.target.value, 10); };
+el('mut').oninput  = (e) => { CFG.mutRate = parseFloat(e.target.value); };
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === ' ')      { e.preventDefault(); setPaused(!state.paused); }
+  else if (e.key === 'r') newWorld();
+  else if (e.key === 't') setTrails(!state.trails);
+  else if (e.key === 'v') setVision(!state.vision);
+  else if (e.key === 'h' || e.key === '?') toggleHelp();
+  else if (e.key === ']') setSpeed(clamp(state.speed + 0.5, 0.25, 8));
+  else if (e.key === '[') setSpeed(clamp(state.speed - 0.5, 0.25, 8));
+});
+
+window.addEventListener('resize', resize);
+
+/* ---------- go ----------------------------------------------------------- */
+init();
+setTrails(true);
+setSpeed(1);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
