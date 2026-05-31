@@ -1,7 +1,5 @@
 # PRIMORDIUM
 
-> 🧪 _A curious-tinkerer experiment — built for fun and learning, not as professional software. Rough edges are half the charm._
-
 **A self-contained artificial-life simulation. Watch evolution happen, live, in your browser.**
 
 **[▶ Live Demo](https://switchfire6.github.io/primordium/)**
